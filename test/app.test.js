@@ -4,6 +4,7 @@ import {
   WordHistory,
   getEmojiForWord,
   getMoodPalette,
+  getThemeForWord,
   normalizeWord,
   rankSongsForOutput
 } from '../app.js';
@@ -41,7 +42,8 @@ test('rankSongsForOutput keeps ascending popularity and index starts at 1', () =
   );
 });
 
-test('emoji and mood mappings are available for aesthetic rules', () => {
+test('emoji, mood, and theme mappings are available for aesthetic rules', () => {
   assert.equal(getEmojiForWord('sun'), '☀️');
   assert.ok(Array.isArray(getMoodPalette('happy')));
+  assert.equal(getThemeForWord('forest')?.startsWith('linear-gradient'), true);
 });

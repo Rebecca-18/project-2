@@ -71,7 +71,7 @@ body.bg-marble-gray {
 
 body.bg-emoji {
   background-color: #f7f7f7;
-  background-image: var(--emoji-bg, "✨");
+  background-image: var(--emoji-bg, none);
   background-size: 128px;
 }
 

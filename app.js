@@ -66,15 +66,18 @@ function getThemeForWord(word) {
 
 function rankSongsForOutput(songs) {
   // Deezer rank values are higher for more popular tracks.
-  const sortedByPopularity = [...songs].sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0));
-  const top = sortedByPopularity.slice(0, MAX_SONGS);
-  const ascending = [...top].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0));
-  return ascending.map((song, i) => ({
+  const ascendingByRank = [...songs].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0));
+  const top = ascendingByRank.slice(-MAX_SONGS);
+  return top.map((song, i) => ({
     popularityIndex: i + 1,
     title: song.title,
     artist: song.artist?.name || 'Unknown Artist',
     rank: song.rank ?? 0
   }));
+}
+
+function toEmojiBackgroundDataUri(emoji) {
+  return `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Ctext y='0.9em' font-size='120'%3E${encodeURIComponent(emoji)}%3C/text%3E%3C/svg%3E")`;
 }
 
 class WordHistory {
@@ -184,7 +187,7 @@ function applyBackgroundForWord(word) {
   const emoji = getEmojiForWord(normalized);
   if (emoji) {
     body.classList.add('bg-emoji');
-    body.style.setProperty('--emoji-bg', `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Ctext y='0.9em' font-size='120'%3E${encodeURIComponent(emoji)}%3C/text%3E%3C/svg%3E")`);
+    body.style.setProperty('--emoji-bg', toEmojiBackgroundDataUri(emoji));
     body.style.removeProperty('--theme-bg');
     return;
   }
