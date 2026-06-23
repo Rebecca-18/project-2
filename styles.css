@@ -1,0 +1,88 @@
+:root {
+  color-scheme: light;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: #222;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem 1rem 4rem;
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(2px);
+  min-height: 100vh;
+}
+
+h1,
+h2 {
+  margin-bottom: 0.5rem;
+}
+
+.subtitle {
+  margin-top: 0;
+  color: #444;
+}
+
+button {
+  border: 0;
+  border-radius: 10px;
+  background: #111;
+  color: white;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+#status {
+  min-height: 1.5rem;
+  color: #333;
+}
+
+ol {
+  padding-left: 1.5rem;
+}
+
+li {
+  margin: 0.25rem 0;
+}
+
+body.bg-marble-gray {
+  background:
+    radial-gradient(circle at 30% 20%, #f4f4f4 0 15%, transparent 16%),
+    radial-gradient(circle at 70% 65%, #d8d8d8 0 18%, transparent 19%),
+    radial-gradient(circle at 50% 50%, #ececec 0 12%, transparent 13%),
+    linear-gradient(120deg, #cdcdcd, #f2f2f2, #c0c0c0);
+  background-size: 260px 260px, 360px 360px, 180px 180px, cover;
+}
+
+body.bg-emoji {
+  background-color: #f7f7f7;
+  background-image: var(--emoji-bg, "✨");
+  background-size: 128px;
+}
+
+body.bg-mood {
+  background:
+    radial-gradient(circle at 15% 20%, rgba(255, 255, 255, 0.25) 0 12%, transparent 13%),
+    radial-gradient(circle at 80% 70%, rgba(0, 0, 0, 0.08) 0 15%, transparent 16%),
+    linear-gradient(135deg, var(--mood-color-1), var(--mood-color-2), var(--mood-color-3));
+  background-size: 240px 240px, 320px 320px, cover;
+}
+
+body.bg-theme {
+  background: var(--theme-bg, linear-gradient(120deg, #ddd, #fafafa));
+}

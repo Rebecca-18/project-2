@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Word Song Finder</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="bg-marble-gray">
+    <main class="container">
+      <h1>Word Song Finder</h1>
+      <p class="subtitle">Generate a random word and find up to 300 matching song titles.</p>
+
+      <button id="generateBtn" type="button">Generate Word + Songs</button>
+      <p id="status" role="status" aria-live="polite"></p>
+
+      <section>
+        <h2>Generated word: <span id="word">—</span></h2>
+      </section>
+
+      <section>
+        <h2>Songs by ascending popularity</h2>
+        <ol id="songList"></ol>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
