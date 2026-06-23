@@ -42,6 +42,19 @@ test('rankSongsForOutput keeps ascending popularity and index starts at 1', () =
   );
 });
 
+test('rankSongsForOutput selects top 300 popular songs before display ordering', () => {
+  const songs = Array.from({ length: 305 }, (_, i) => ({
+    title: `Song ${i + 1}`,
+    rank: i + 1,
+    artist: { name: 'Artist' }
+  }));
+
+  const ranked = rankSongsForOutput(songs);
+  assert.equal(ranked.length, 300);
+  assert.equal(ranked[0].rank, 6);
+  assert.equal(ranked[299].rank, 305);
+});
+
 test('emoji, mood, and theme mappings are available for aesthetic rules', () => {
   assert.equal(getEmojiForWord('sun'), '☀️');
   assert.ok(Array.isArray(getMoodPalette('happy')));

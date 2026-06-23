@@ -66,9 +66,11 @@ function getThemeForWord(word) {
 
 function rankSongsForOutput(songs) {
   // Deezer rank values are higher for more popular tracks.
-  const ascendingByRank = [...songs].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0));
-  const top = ascendingByRank.slice(-MAX_SONGS);
-  return top.map((song, i) => ({
+  const topMostPopular = [...songs]
+    .sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0))
+    .slice(0, MAX_SONGS)
+    .sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0));
+  return topMostPopular.map((song, i) => ({
     popularityIndex: i + 1,
     title: song.title,
     artist: song.artist?.name || 'Unknown Artist',
@@ -77,7 +79,7 @@ function rankSongsForOutput(songs) {
 }
 
 function toEmojiBackgroundDataUri(emoji) {
-  return `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Ctext y='0.9em' font-size='120'%3E${encodeURIComponent(emoji)}%3C/text%3E%3C/svg%3E")`;
+  return `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Ctext x='0.1em' y='0.9em' font-size='120'%3E${encodeURIComponent(emoji)}%3C/text%3E%3C/svg%3E")`;
 }
 
 class WordHistory {
