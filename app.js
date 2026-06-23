@@ -2,7 +2,9 @@ const WORD_API = 'https://api.datamuse.com/words';
 const SONG_API = 'https://api.lyrics.ovh/suggest/';
 const MAX_SONGS = 300;
 const RECENT_WORD_LIMIT = 200;
-const MAX_SONG_API_INDEX = 1000;
+const MAX_SONG_PAGES = 6;
+const FAST_RETURN_MIN_SONGS = 120;
+const MAX_WORD_ATTEMPTS = 6;
 
 const moodColors = {
   happy: ['#ffe66d', '#ffbd59', '#ffd670'],
@@ -133,11 +135,8 @@ async function pickRandomWord(history, maxAttempts = 6) {
 async function fetchSongCandidates(word) {
   const allMatches = [];
   const pageSize = 100;
-  for (
-    let index = 0;
-    index < MAX_SONG_API_INDEX && allMatches.length < MAX_SONGS * 3;
-    index += pageSize
-  ) {
+  for (let page = 0; page < MAX_SONG_PAGES && allMatches.length < MAX_SONGS; page += 1) {
+    const index = page * pageSize;
     const response = await fetch(
       `${SONG_API}${encodeURIComponent(word)}?index=${index}&limit=${pageSize}`
     );
@@ -147,12 +146,12 @@ async function fetchSongCandidates(word) {
       song.title?.toLowerCase().includes(word.toLowerCase())
     );
     allMatches.push(...batch);
-    if (!data.next || batch.length === 0) break;
+    if (!data.next) break;
   }
   return allMatches;
 }
 
-async function findWordWithSongs(history, maxWordAttempts = 10) {
+async function findWordWithSongs(history, maxWordAttempts = MAX_WORD_ATTEMPTS) {
   let fallback = null;
   for (let i = 0; i < maxWordAttempts; i += 1) {
     const word = await pickRandomWord(history);
@@ -162,6 +161,10 @@ async function findWordWithSongs(history, maxWordAttempts = 10) {
     }
     const ranked = rankSongsForOutput(songs);
     if (ranked.length >= MAX_SONGS) {
+      return { word, songs: ranked };
+    }
+    // Return early once we have a strong result set to reduce user wait time.
+    if (ranked.length >= FAST_RETURN_MIN_SONGS) {
       return { word, songs: ranked };
     }
     if (!fallback || ranked.length > fallback.songs.length) fallback = { word, songs: ranked };
