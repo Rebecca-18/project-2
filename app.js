@@ -2,6 +2,7 @@ const WORD_API = 'https://api.datamuse.com/words';
 const SONG_API = 'https://api.lyrics.ovh/suggest/';
 const MAX_SONGS = 300;
 const RECENT_WORD_LIMIT = 200;
+const MAX_SONG_API_INDEX = 1000;
 
 const moodColors = {
   happy: ['#ffe66d', '#ffbd59', '#ffd670'],
@@ -64,6 +65,7 @@ function getThemeForWord(word) {
 }
 
 function rankSongsForOutput(songs) {
+  // Deezer rank values are higher for more popular tracks.
   const sortedByPopularity = [...songs].sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0));
   const top = sortedByPopularity.slice(0, MAX_SONGS);
   const ascending = [...top].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0));
@@ -126,7 +128,11 @@ async function pickRandomWord(history, maxAttempts = 6) {
 async function fetchSongCandidates(word) {
   const allMatches = [];
   const pageSize = 100;
-  for (let index = 0; index < 1000 && allMatches.length < MAX_SONGS * 3; index += pageSize) {
+  for (
+    let index = 0;
+    index < MAX_SONG_API_INDEX && allMatches.length < MAX_SONGS * 3;
+    index += pageSize
+  ) {
     const response = await fetch(
       `${SONG_API}${encodeURIComponent(word)}?index=${index}&limit=${pageSize}`
     );

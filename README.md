@@ -6,7 +6,7 @@ Simple static site that:
 - lists songs from least popular (1) to most popular.
 
 ## Run
-Open `/home/runner/work/project-2/project-2/index.html` in a browser.
+Open `index.html` in a browser.
 
 ## Test
 ```bash
