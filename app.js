@@ -1,10 +1,14 @@
 const WORD_API = 'https://api.datamuse.com/words';
-const SONG_API = 'https://api.lyrics.ovh/suggest/';
+const SONG_API = 'https://itunes.apple.com/search';
 const MAX_SONGS = 300;
 const RECENT_WORD_LIMIT = 200;
-const MAX_SONG_PAGES = 6;
-const FAST_RETURN_MIN_SONGS = 120;
+const MAX_SONG_PAGES = 4;
+const FAST_RETURN_MIN_SONGS = 80;
 const MAX_WORD_ATTEMPTS = 6;
+const REQUEST_TIMEOUT_MS = 4500;
+const MIN_TRACK_DURATION_MS = 60_000;
+const FETCH_RETRIES = 2;
+const FETCH_RETRY_DELAY_MS = 120;
 
 const moodColors = {
   happy: ['#ffe66d', '#ffbd59', '#ffd670'],
@@ -37,15 +41,131 @@ const themedBackgrounds = {
   beach: 'linear-gradient(120deg, #e9edc9, #94d2bd, #0a9396)',
   sky: 'linear-gradient(120deg, #caf0f8, #90e0ef, #00b4d8)',
   winter: 'linear-gradient(120deg, #edf6f9, #dfe7fd, #cddafd)',
-  autumn: 'linear-gradient(120deg, #bc6c25, #dda15e, #6f1d1b)'
+  autumn: 'linear-gradient(120deg, #bc6c25, #dda15e, #6f1d1b)',
+  artsy:
+    'linear-gradient(135deg, #ff9f1c 0%, #ffbf69 22%, #2ec4b6 47%, #3a86ff 72%, #8338ec 100%)'
+};
+
+const aestheticThemeKeywords = {
+  artsy: ['artiste', 'artist', 'artsy', 'art', 'gallery', 'canvas', 'paint', 'muse']
+};
+
+const colorSchemes = {
+  sunrise: {
+    accent: '#ff6b3d',
+    buttonStart: '#ff6b3d',
+    buttonEnd: '#ff9e57',
+    cardTint: 'rgba(255, 244, 235, 0.82)',
+    bg1: '#fff1e6',
+    bg2: '#ffe0cc',
+    bg3: '#ffd0b0'
+  },
+  ocean: {
+    accent: '#0f6ea6',
+    buttonStart: '#0f6ea6',
+    buttonEnd: '#2aa5d6',
+    cardTint: 'rgba(235, 247, 255, 0.84)',
+    bg1: '#e7f6ff',
+    bg2: '#c9ebff',
+    bg3: '#addfff'
+  },
+  mint: {
+    accent: '#0f8f6f',
+    buttonStart: '#0f8f6f',
+    buttonEnd: '#33c49f',
+    cardTint: 'rgba(234, 255, 246, 0.82)',
+    bg1: '#eafff5',
+    bg2: '#cdfce9',
+    bg3: '#b2f7dd'
+  },
+  dusk: {
+    accent: '#6d49d8',
+    buttonStart: '#6d49d8',
+    buttonEnd: '#9d73ff',
+    cardTint: 'rgba(243, 238, 255, 0.84)',
+    bg1: '#f1ecff',
+    bg2: '#ddd0ff',
+    bg3: '#c8b5ff'
+  }
 };
 
 function normalizeWord(value) {
   return value.toLowerCase().replace(/[^a-z]/g, '');
 }
 
+function getCoreTitleForMatching(title) {
+  const raw = (title || '').toLowerCase();
+  return raw
+    .replace(/\s*[\(\[\{]\s*(feat\.?|ft\.?|featuring)\s+[^\)\]\}]*[\)\]\}]\s*/gi, ' ')
+    .replace(/\s*[-–]\s*(feat\.?|ft\.?|featuring)\s+.*$/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function titleIncludesWordIgnoringFeatures(title, word) {
+  const coreTitle = getCoreTitleForMatching(title);
+  return coreTitle.includes((word || '').toLowerCase());
+}
+
+function parseDefinitionFromDatamuseEntry(entry) {
+  const defs = entry?.defs;
+  if (!Array.isArray(defs) || defs.length === 0) return null;
+  const first = defs[0] || '';
+  const tabIndex = first.indexOf('\t');
+  if (tabIndex === -1) return first.trim() || null;
+  return first.slice(tabIndex + 1).trim() || null;
+}
+
+function isLikelySongTrack(song) {
+  const text = `${song.trackName || ''} ${song.artistName || ''}`.toLowerCase();
+  const genre = (song.primaryGenreName || '').toLowerCase();
+  const blockedPhrases = [
+    'white noise',
+    'brown noise',
+    'pink noise',
+    'rain sounds',
+    'ocean sounds',
+    'sleep sounds',
+    'sleep music',
+    'deep sleep',
+    'binaural',
+    'asmr',
+    'meditation',
+    'nature sounds'
+  ];
+  const blockedGenres = ['nature', 'new age', 'spoken word'];
+  const hasBlockedPhrase = blockedPhrases.some((phrase) => text.includes(phrase));
+  const hasBlockedGenre = blockedGenres.some((blocked) => genre.includes(blocked));
+  const hasValidDuration =
+    !Number.isFinite(song.trackTimeMillis) || song.trackTimeMillis >= MIN_TRACK_DURATION_MS;
+  return !hasBlockedPhrase && !hasBlockedGenre && hasValidDuration;
+}
+
 function chooseRandom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchJson(url, timeoutMs = REQUEST_TIMEOUT_MS, retries = FETCH_RETRIES) {
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      if (!response.ok) throw new Error('Request failed');
+      return await response.json();
+    } catch (error) {
+      if (attempt === retries) throw error;
+      await wait(FETCH_RETRY_DELAY_MS * (attempt + 1));
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  throw new Error('Request failed');
 }
 
 function makeRandomPattern() {
@@ -63,21 +183,64 @@ function getMoodPalette(word) {
 }
 
 function getThemeForWord(word) {
-  return themedBackgrounds[word] || null;
+  const normalized = normalizeWord(word || '');
+  if (!normalized) return null;
+  if (themedBackgrounds[normalized]) return themedBackgrounds[normalized];
+
+  const matchedTheme = Object.entries(aestheticThemeKeywords).find(([, keywords]) =>
+    keywords.some((keyword) => normalized.includes(keyword))
+  );
+
+  if (matchedTheme) {
+    return themedBackgrounds[matchedTheme[0]] || null;
+  }
+
+  return null;
+}
+
+function getColorSchemeForWord(word) {
+  const normalized = normalizeWord(word || '');
+  const names = Object.keys(colorSchemes);
+  if (!normalized || names.length === 0) {
+    return { name: names[0] || 'default', values: colorSchemes[names[0]] || null };
+  }
+
+  let hash = 0;
+  for (let i = 0; i < normalized.length; i += 1) {
+    hash = (hash * 31 + normalized.charCodeAt(i)) % 1_000_000_007;
+  }
+  const name = names[hash % names.length];
+  return { name, values: colorSchemes[name] };
 }
 
 function rankSongsForOutput(songs) {
-  // Deezer rank values are higher for more popular tracks.
-  const topMostPopular = [...songs]
+  const uniqueSongs = dedupeSongsByArtistAndTitle(songs);
+  // Higher rank values are treated as more popular.
+  const topMostPopular = [...uniqueSongs]
     .sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0))
-    .slice(0, MAX_SONGS)
-    .sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0));
+    .slice(0, MAX_SONGS);
   return topMostPopular.map((song, i) => ({
     popularityIndex: i + 1,
     title: song.title,
     artist: song.artist?.name || 'Unknown Artist',
     rank: song.rank ?? 0
   }));
+}
+
+function dedupeSongsByArtistAndTitle(songs) {
+  const seen = new Set();
+  const unique = [];
+
+  songs.forEach((song) => {
+    const title = (song.title || '').trim().toLowerCase();
+    const artist = (song.artist?.name || '').trim().toLowerCase();
+    const key = `${title}::${artist}`;
+    if (!title || !artist || seen.has(key)) return;
+    seen.add(key);
+    unique.push(song);
+  });
+
+  return unique;
 }
 
 function toEmojiBackgroundDataUri(emoji) {
@@ -112,10 +275,19 @@ async function fetchRandomDictionaryCandidates() {
     max: '1000',
     md: 'f'
   });
-  const response = await fetch(`${WORD_API}?${params.toString()}`);
-  if (!response.ok) throw new Error('Word API failed');
-  const items = await response.json();
+  const items = await fetchJson(`${WORD_API}?${params.toString()}`);
   return items.map((item) => normalizeWord(item.word)).filter(Boolean);
+}
+
+async function fetchWordDefinition(word) {
+  const params = new URLSearchParams({
+    sp: word,
+    max: '1',
+    md: 'd'
+  });
+  const items = await fetchJson(`${WORD_API}?${params.toString()}`);
+  const exactMatch = (items || []).find((item) => normalizeWord(item.word) === normalizeWord(word));
+  return parseDefinitionFromDatamuseEntry(exactMatch) || 'No definition found.';
 }
 
 async function pickRandomWord(history, maxAttempts = 6) {
@@ -136,17 +308,25 @@ async function fetchSongCandidates(word) {
   const allMatches = [];
   const pageSize = 100;
   for (let page = 0; page < MAX_SONG_PAGES && allMatches.length < MAX_SONGS; page += 1) {
-    const index = page * pageSize;
-    const response = await fetch(
-      `${SONG_API}${encodeURIComponent(word)}?index=${index}&limit=${pageSize}`
-    );
-    if (!response.ok) throw new Error('Song API failed');
-    const data = await response.json();
-    const batch = (data.data || []).filter((song) =>
-      song.title?.toLowerCase().includes(word.toLowerCase())
-    );
+    const offset = page * pageSize;
+    const params = new URLSearchParams({
+      term: word,
+      entity: 'song',
+      limit: String(pageSize),
+      offset: String(offset)
+    });
+    const data = await fetchJson(`${SONG_API}?${params.toString()}`);
+    const batch = (data.results || [])
+      .filter((song) => isLikelySongTrack(song))
+      .filter((song) => titleIncludesWordIgnoringFeatures(song.trackName, word))
+      .map((song, i) => ({
+        title: song.trackName,
+        artist: { name: song.artistName || 'Unknown Artist' },
+        // iTunes omits a popularity score, so we use API relevance order as a proxy.
+        rank: pageSize * MAX_SONG_PAGES - (offset + i)
+      }));
     allMatches.push(...batch);
-    if (!data.next) break;
+    if ((data.resultCount || 0) < pageSize) break;
   }
   return allMatches;
 }
@@ -210,11 +390,27 @@ function applyBackgroundForWord(word) {
   body.style.removeProperty('--theme-bg');
 }
 
+function applyColorSchemeForWord(word) {
+  const body = document.body;
+  const { name, values } = getColorSchemeForWord(word);
+  body.dataset.scheme = name;
+  if (!values) return name;
+
+  body.style.setProperty('--accent-color', values.accent);
+  body.style.setProperty('--button-start', values.buttonStart);
+  body.style.setProperty('--button-end', values.buttonEnd);
+  body.style.setProperty('--card-tint', values.cardTint);
+  body.style.setProperty('--scheme-bg-1', values.bg1);
+  body.style.setProperty('--scheme-bg-2', values.bg2);
+  body.style.setProperty('--scheme-bg-3', values.bg3);
+  return name;
+}
+
 function renderSongs(listEl, songs) {
   listEl.innerHTML = '';
   songs.forEach((song) => {
     const li = document.createElement('li');
-    li.textContent = `${song.popularityIndex}. ${song.title} — ${song.artist}`;
+    li.textContent = `${song.title} — ${song.artist}`;
     listEl.appendChild(li);
   });
 }
@@ -224,25 +420,34 @@ function setupApp(doc = document) {
   const button = doc.getElementById('generateBtn');
   const status = doc.getElementById('status');
   const word = doc.getElementById('word');
+  const definition = doc.getElementById('definition');
   const songList = doc.getElementById('songList');
 
   async function run() {
     button.disabled = true;
     status.textContent = 'Generating word and finding songs...';
-    try {
-      const result = await findWordWithSongs(history);
-      word.textContent = result.word;
-      renderSongs(songList, result.songs);
-      applyBackgroundForWord(result.word);
-      status.textContent = `Found ${result.songs.length} songs for “${result.word}”.`;
-    } catch (error) {
-      status.textContent = error.message || 'Something went wrong.';
-    } finally {
-      button.disabled = false;
+    // Keep regenerating silently until we have a usable result.
+    while (true) {
+      try {
+        const result = await findWordWithSongs(history);
+        const wordDefinition = await fetchWordDefinition(result.word).catch(() => 'Definition unavailable.');
+        word.textContent = result.word;
+        if (definition) definition.textContent = wordDefinition;
+        renderSongs(songList, result.songs);
+        applyBackgroundForWord(result.word);
+        applyColorSchemeForWord(result.word);
+        status.textContent = `Found ${result.songs.length} songs for “${result.word}”.`;
+        break;
+      } catch {
+        status.textContent = 'Generating word and finding songs...';
+        await wait(180);
+      }
     }
+    button.disabled = false;
   }
 
   button.addEventListener('click', run);
+  run();
 }
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {
@@ -255,5 +460,10 @@ export {
   getMoodPalette,
   getThemeForWord,
   normalizeWord,
-  rankSongsForOutput
+  rankSongsForOutput,
+  titleIncludesWordIgnoringFeatures,
+  isLikelySongTrack,
+  dedupeSongsByArtistAndTitle,
+  parseDefinitionFromDatamuseEntry,
+  getColorSchemeForWord
 };

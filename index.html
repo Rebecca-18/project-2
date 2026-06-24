@@ -11,15 +11,16 @@
       <h1>Word Song Finder</h1>
       <p class="subtitle">Generate a random word and find up to 300 matching song titles.</p>
 
-      <button id="generateBtn" type="button">Generate Word + Songs</button>
+      <button id="generateBtn" type="button">Generate New Word</button>
       <p id="status" role="status" aria-live="polite"></p>
 
       <section>
         <h2>Generated word: <span id="word">—</span></h2>
+        <p class="definition-line"><strong>Definition:</strong> <span id="definition">—</span></p>
       </section>
 
       <section>
-        <h2>Songs by ascending popularity</h2>
+        <h2>Songs by descending popularity</h2>
         <ol id="songList"></ol>
       </section>
     </main>
