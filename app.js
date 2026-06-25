@@ -1,9 +1,9 @@
 const WORD_API = 'https://api.datamuse.com/words';
 const SONG_API = 'https://itunes.apple.com/search';
+const SPOTIFY_PROXY_API = '/api/spotify-search';
 const MAX_SONGS = 300;
 const RECENT_WORD_LIMIT = 200;
-const MAX_SONG_PAGES = 4;
-const FAST_RETURN_MIN_SONGS = 80;
+const ITUNES_MARKETS = ['US', 'KR', 'JP', 'GB', 'CA'];
 const MAX_WORD_ATTEMPTS = 6;
 const REQUEST_TIMEOUT_MS = 4500;
 const MIN_TRACK_DURATION_MS = 60_000;
@@ -114,6 +114,15 @@ function parseDefinitionFromDatamuseEntry(entry) {
   const tabIndex = first.indexOf('\t');
   if (tabIndex === -1) return first.trim() || null;
   return first.slice(tabIndex + 1).trim() || null;
+}
+
+function parsePronunciationFromDatamuseEntry(entry) {
+  const tags = entry?.tags;
+  if (!Array.isArray(tags) || tags.length === 0) return null;
+  const pronTag = tags.find((tag) => typeof tag === 'string' && tag.startsWith('pron:'));
+  if (!pronTag) return null;
+  const pronunciation = pronTag.slice(5).trim();
+  return pronunciation || null;
 }
 
 function isLikelySongTrack(song) {
@@ -279,15 +288,18 @@ async function fetchRandomDictionaryCandidates() {
   return items.map((item) => normalizeWord(item.word)).filter(Boolean);
 }
 
-async function fetchWordDefinition(word) {
+async function fetchWordProfile(word) {
   const params = new URLSearchParams({
     sp: word,
     max: '1',
-    md: 'd'
+    md: 'dr'
   });
   const items = await fetchJson(`${WORD_API}?${params.toString()}`);
   const exactMatch = (items || []).find((item) => normalizeWord(item.word) === normalizeWord(word));
-  return parseDefinitionFromDatamuseEntry(exactMatch) || 'No definition found.';
+  return {
+    definition: parseDefinitionFromDatamuseEntry(exactMatch) || 'No definition found.',
+    pronunciation: parsePronunciationFromDatamuseEntry(exactMatch) || 'Pronunciation unavailable.'
+  };
 }
 
 async function pickRandomWord(history, maxAttempts = 6) {
@@ -305,29 +317,66 @@ async function pickRandomWord(history, maxAttempts = 6) {
 }
 
 async function fetchSongCandidates(word) {
+  try {
+    return await fetchSpotifySongCandidates(word);
+  } catch {
+    return await fetchItunesSongCandidates(word);
+  }
+}
+
+async function fetchSpotifySongCandidates(word) {
+  const params = new URLSearchParams({ word });
+  const data = await fetchJson(`${SPOTIFY_PROXY_API}?${params.toString()}`, REQUEST_TIMEOUT_MS, 0);
+  const tracks = Array.isArray(data?.tracks) ? data.tracks : [];
+  const filtered = tracks
+    .filter((track) => titleIncludesWordIgnoringFeatures(track.title, word))
+    .filter((track) =>
+      isLikelySongTrack({
+        trackName: track.title,
+        artistName: track.artist,
+        primaryGenreName: track.genre,
+        trackTimeMillis: track.durationMs
+      })
+    )
+    .map((track) => ({
+      title: track.title,
+      artist: { name: track.artist || 'Unknown Artist' },
+      rank: Number.isFinite(track.popularity) ? track.popularity : 0
+    }));
+  return filtered;
+}
+
+async function fetchItunesSongCandidates(word) {
+  const pageSize = 200;
+  const responses = await Promise.all(
+    ITUNES_MARKETS.map(async (market) => {
+      const params = new URLSearchParams({
+        term: word,
+        entity: 'song',
+        attribute: 'songTerm',
+        limit: String(pageSize),
+        country: market
+      });
+      const data = await fetchJson(`${SONG_API}?${params.toString()}`);
+      return data.results || [];
+    })
+  );
+
   const allMatches = [];
-  const pageSize = 100;
-  for (let page = 0; page < MAX_SONG_PAGES && allMatches.length < MAX_SONGS; page += 1) {
-    const offset = page * pageSize;
-    const params = new URLSearchParams({
-      term: word,
-      entity: 'song',
-      limit: String(pageSize),
-      offset: String(offset)
-    });
-    const data = await fetchJson(`${SONG_API}?${params.toString()}`);
-    const batch = (data.results || [])
+  responses.forEach((results) => {
+    (results || [])
       .filter((song) => isLikelySongTrack(song))
       .filter((song) => titleIncludesWordIgnoringFeatures(song.trackName, word))
-      .map((song, i) => ({
-        title: song.trackName,
-        artist: { name: song.artistName || 'Unknown Artist' },
-        // iTunes omits a popularity score, so we use API relevance order as a proxy.
-        rank: pageSize * MAX_SONG_PAGES - (offset + i)
-      }));
-    allMatches.push(...batch);
-    if ((data.resultCount || 0) < pageSize) break;
-  }
+      .forEach((song, i) => {
+        allMatches.push({
+          title: song.trackName,
+          artist: { name: song.artistName || 'Unknown Artist' },
+          // iTunes omits popularity score, so we use market-local relevance as a proxy.
+          rank: pageSize - i
+        });
+      });
+  });
+
   return allMatches;
 }
 
@@ -341,10 +390,6 @@ async function findWordWithSongs(history, maxWordAttempts = MAX_WORD_ATTEMPTS) {
     }
     const ranked = rankSongsForOutput(songs);
     if (ranked.length >= MAX_SONGS) {
-      return { word, songs: ranked };
-    }
-    // Return early once we have a strong result set to reduce user wait time.
-    if (ranked.length >= FAST_RETURN_MIN_SONGS) {
       return { word, songs: ranked };
     }
     if (!fallback || ranked.length > fallback.songs.length) fallback = { word, songs: ranked };
@@ -406,6 +451,99 @@ function applyColorSchemeForWord(word) {
   return name;
 }
 
+function formatPronunciation(pronunciation) {
+  if (!pronunciation || pronunciation === 'Pronunciation unavailable.') {
+    return 'Pronunciation unavailable.';
+  }
+  const trimmed = pronunciation.trim();
+  if (!trimmed) return 'Pronunciation unavailable.';
+  if (trimmed.startsWith('/') && trimmed.endsWith('/')) return trimmed;
+  return `/${trimmed}/`;
+}
+
+function combineDefinitionAndPronunciation(definition, pronunciation) {
+  const safeDefinition = definition || 'Definition unavailable.';
+  const formattedPronunciation = formatPronunciation(pronunciation);
+  if (formattedPronunciation === 'Pronunciation unavailable.') return safeDefinition;
+  return `${safeDefinition} Pronunciation: ${formattedPronunciation}`;
+}
+
+function createLoadingStateHandlers(doc) {
+  const loadingPanel = doc.getElementById('loadingPanel');
+  const loadingHint = doc.getElementById('loadingHint');
+  const toggleGameBtn = doc.getElementById('toggleGameBtn');
+  const tapTarget = doc.getElementById('tapTarget');
+  const tapScore = doc.getElementById('tapScore');
+  const resetTapScore = doc.getElementById('resetTapScore');
+
+  let score = 0;
+  let hintIntervalId = null;
+  let isPinnedOpen = false;
+  let isLoading = false;
+  const hints = [
+    'Scanning songs across markets...',
+    'Scoring tracks by popularity...',
+    'Styling the page for your new word...'
+  ];
+  let hintIndex = 0;
+
+  if (tapTarget && tapScore) {
+    tapTarget.addEventListener('click', () => {
+      score += 1;
+      tapScore.textContent = String(score);
+    });
+  }
+
+  if (resetTapScore && tapScore) {
+    resetTapScore.addEventListener('click', () => {
+      score = 0;
+      tapScore.textContent = '0';
+    });
+  }
+
+  function setPanelVisibility() {
+    if (!loadingPanel) return;
+    loadingPanel.hidden = !(isPinnedOpen || isLoading);
+  }
+
+  if (toggleGameBtn) {
+    toggleGameBtn.addEventListener('click', () => {
+      isPinnedOpen = !isPinnedOpen;
+      toggleGameBtn.textContent = isPinnedOpen ? 'Hide Tap Game' : 'Open Tap Game';
+      if (loadingHint && !isLoading) {
+        loadingHint.textContent = 'Tap game ready.';
+      }
+      setPanelVisibility();
+    });
+  }
+
+  function start() {
+    isLoading = true;
+    setPanelVisibility();
+    if (loadingHint) {
+      loadingHint.textContent = hints[0];
+      hintIndex = 0;
+      clearInterval(hintIntervalId);
+      hintIntervalId = setInterval(() => {
+        hintIndex = (hintIndex + 1) % hints.length;
+        loadingHint.textContent = hints[hintIndex];
+      }, 1300);
+    }
+  }
+
+  function stop() {
+    isLoading = false;
+    setPanelVisibility();
+    clearInterval(hintIntervalId);
+    hintIntervalId = null;
+    if (loadingHint) {
+      loadingHint.textContent = 'Tap game ready.';
+    }
+  }
+
+  return { start, stop };
+}
+
 function renderSongs(listEl, songs) {
   listEl.innerHTML = '';
   songs.forEach((song) => {
@@ -422,17 +560,27 @@ function setupApp(doc = document) {
   const word = doc.getElementById('word');
   const definition = doc.getElementById('definition');
   const songList = doc.getElementById('songList');
+  const loadingUi = createLoadingStateHandlers(doc);
 
   async function run() {
     button.disabled = true;
     status.textContent = 'Generating word and finding songs...';
+    loadingUi.start();
     // Keep regenerating silently until we have a usable result.
     while (true) {
       try {
         const result = await findWordWithSongs(history);
-        const wordDefinition = await fetchWordDefinition(result.word).catch(() => 'Definition unavailable.');
+        const wordProfile = await fetchWordProfile(result.word).catch(() => ({
+          definition: 'Definition unavailable.',
+          pronunciation: 'Pronunciation unavailable.'
+        }));
         word.textContent = result.word;
-        if (definition) definition.textContent = wordDefinition;
+        if (definition) {
+          definition.textContent = combineDefinitionAndPronunciation(
+            wordProfile.definition,
+            wordProfile.pronunciation
+          );
+        }
         renderSongs(songList, result.songs);
         applyBackgroundForWord(result.word);
         applyColorSchemeForWord(result.word);
@@ -443,6 +591,7 @@ function setupApp(doc = document) {
         await wait(180);
       }
     }
+    loadingUi.stop();
     button.disabled = false;
   }
 
@@ -465,5 +614,6 @@ export {
   isLikelySongTrack,
   dedupeSongsByArtistAndTitle,
   parseDefinitionFromDatamuseEntry,
+  parsePronunciationFromDatamuseEntry,
   getColorSchemeForWord
 };

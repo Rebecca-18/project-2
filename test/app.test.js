@@ -10,6 +10,7 @@ import {
   isLikelySongTrack,
   normalizeWord,
   parseDefinitionFromDatamuseEntry,
+  parsePronunciationFromDatamuseEntry,
   rankSongsForOutput,
   titleIncludesWordIgnoringFeatures
 } from '../app.js';
@@ -116,6 +117,11 @@ test('parseDefinitionFromDatamuseEntry extracts clean definition text', () => {
     'a person who creates art'
   );
   assert.equal(parseDefinitionFromDatamuseEntry({ defs: [] }), null);
+});
+
+test('parsePronunciationFromDatamuseEntry extracts pronunciation tag', () => {
+  assert.equal(parsePronunciationFromDatamuseEntry({ tags: ['n', 'pron:flaI'] }), 'flaI');
+  assert.equal(parsePronunciationFromDatamuseEntry({ tags: ['n', 'f:12'] }), null);
 });
 
 test('getColorSchemeForWord is deterministic and returns known schemes', () => {
