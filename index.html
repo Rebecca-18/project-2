@@ -12,7 +12,9 @@
       <p class="subtitle">Generate a random word and find up to 300 matching song titles.</p>
 
       <button id="generateBtn" type="button">Generate New Word</button>
-      <button id="toggleGameBtn" type="button" class="toggle-game">Open Tap Game</button>
+      <div class="game-controls">
+        <button id="openGameBtn" type="button" class="game-toggle">Open Mini Game</button>
+      </div>
       <p id="status" role="status" aria-live="polite"></p>
 
       <section>
@@ -20,15 +22,20 @@
         <p class="definition-line"><strong>Definition:</strong> <span id="definition">—</span></p>
       </section>
 
-      <section id="loadingPanel" class="loading-panel" hidden>
-        <div class="pulse-orb" aria-hidden="true"></div>
-        <p id="loadingHint" class="loading-hint">Tap game ready.</p>
-        <div class="mini-game" aria-live="polite">
-          <p class="mini-title">Tap the beat anytime</p>
-          <button id="tapTarget" type="button" class="tap-target">Tap</button>
-          <p class="tap-score">Score: <span id="tapScore">0</span></p>
-          <button id="resetTapScore" type="button" class="reset-score">Reset score</button>
+      <section id="miniGamePanel" class="mini-game-panel" hidden>
+        <div class="mini-game-header">
+          <h2>Mini Game: Quick Math</h2>
+          <button id="closeGameBtn" type="button" class="game-close">Close Game</button>
         </div>
+        <p class="mini-game-subtitle">Solve as many as you can while songs load.</p>
+        <p id="mathPrompt" class="math-prompt">4 + 7 = ?</p>
+        <div class="math-controls">
+          <input id="mathAnswer" type="number" inputmode="numeric" placeholder="Answer" />
+          <button id="submitMathBtn" type="button">Submit</button>
+          <button id="nextMathBtn" type="button" class="secondary-btn">Skip</button>
+        </div>
+        <p id="mathFeedback" class="math-feedback" aria-live="polite">Press Submit to score.</p>
+        <p class="math-score">Score: <span id="mathScore">0</span> | Streak: <span id="mathStreak">0</span></p>
       </section>
 
       <section>

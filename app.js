@@ -468,82 +468,6 @@ function combineDefinitionAndPronunciation(definition, pronunciation) {
   return `${safeDefinition} Pronunciation: ${formattedPronunciation}`;
 }
 
-function createLoadingStateHandlers(doc) {
-  const loadingPanel = doc.getElementById('loadingPanel');
-  const loadingHint = doc.getElementById('loadingHint');
-  const toggleGameBtn = doc.getElementById('toggleGameBtn');
-  const tapTarget = doc.getElementById('tapTarget');
-  const tapScore = doc.getElementById('tapScore');
-  const resetTapScore = doc.getElementById('resetTapScore');
-
-  let score = 0;
-  let hintIntervalId = null;
-  let isPinnedOpen = false;
-  let isLoading = false;
-  const hints = [
-    'Scanning songs across markets...',
-    'Scoring tracks by popularity...',
-    'Styling the page for your new word...'
-  ];
-  let hintIndex = 0;
-
-  if (tapTarget && tapScore) {
-    tapTarget.addEventListener('click', () => {
-      score += 1;
-      tapScore.textContent = String(score);
-    });
-  }
-
-  if (resetTapScore && tapScore) {
-    resetTapScore.addEventListener('click', () => {
-      score = 0;
-      tapScore.textContent = '0';
-    });
-  }
-
-  function setPanelVisibility() {
-    if (!loadingPanel) return;
-    loadingPanel.hidden = !(isPinnedOpen || isLoading);
-  }
-
-  if (toggleGameBtn) {
-    toggleGameBtn.addEventListener('click', () => {
-      isPinnedOpen = !isPinnedOpen;
-      toggleGameBtn.textContent = isPinnedOpen ? 'Hide Tap Game' : 'Open Tap Game';
-      if (loadingHint && !isLoading) {
-        loadingHint.textContent = 'Tap game ready.';
-      }
-      setPanelVisibility();
-    });
-  }
-
-  function start() {
-    isLoading = true;
-    setPanelVisibility();
-    if (loadingHint) {
-      loadingHint.textContent = hints[0];
-      hintIndex = 0;
-      clearInterval(hintIntervalId);
-      hintIntervalId = setInterval(() => {
-        hintIndex = (hintIndex + 1) % hints.length;
-        loadingHint.textContent = hints[hintIndex];
-      }, 1300);
-    }
-  }
-
-  function stop() {
-    isLoading = false;
-    setPanelVisibility();
-    clearInterval(hintIntervalId);
-    hintIntervalId = null;
-    if (loadingHint) {
-      loadingHint.textContent = 'Tap game ready.';
-    }
-  }
-
-  return { start, stop };
-}
-
 function renderSongs(listEl, songs) {
   listEl.innerHTML = '';
   songs.forEach((song) => {
@@ -553,19 +477,133 @@ function renderSongs(listEl, songs) {
   });
 }
 
+function makeMathRound() {
+  const operators = ['+', '-', '*'];
+  const operator = chooseRandom(operators);
+  let left = Math.floor(Math.random() * 12) + 1;
+  let right = Math.floor(Math.random() * 12) + 1;
+  if (operator === '-') {
+    if (right > left) [left, right] = [right, left];
+    return { prompt: `${left} - ${right}`, answer: left - right };
+  }
+  if (operator === '*') {
+    return { prompt: `${left} x ${right}`, answer: left * right };
+  }
+  return { prompt: `${left} + ${right}`, answer: left + right };
+}
+
+function setupMiniGame(doc = document) {
+  const openBtn = doc.getElementById('openGameBtn');
+  const closeBtn = doc.getElementById('closeGameBtn');
+  const panel = doc.getElementById('miniGamePanel');
+  const prompt = doc.getElementById('mathPrompt');
+  const answerInput = doc.getElementById('mathAnswer');
+  const submitBtn = doc.getElementById('submitMathBtn');
+  const nextBtn = doc.getElementById('nextMathBtn');
+  const feedback = doc.getElementById('mathFeedback');
+  const scoreEl = doc.getElementById('mathScore');
+  const streakEl = doc.getElementById('mathStreak');
+
+  if (
+    !openBtn ||
+    !closeBtn ||
+    !panel ||
+    !prompt ||
+    !answerInput ||
+    !submitBtn ||
+    !nextBtn ||
+    !feedback ||
+    !scoreEl ||
+    !streakEl
+  ) {
+    return;
+  }
+
+  let score = 0;
+  let streak = 0;
+  let currentRound = makeMathRound();
+
+  function renderRound() {
+    prompt.textContent = `${currentRound.prompt} = ?`;
+    scoreEl.textContent = String(score);
+    streakEl.textContent = String(streak);
+  }
+
+  function openGame() {
+    panel.hidden = false;
+    openBtn.disabled = true;
+    answerInput.focus();
+  }
+
+  function closeGame() {
+    panel.hidden = true;
+    openBtn.disabled = false;
+    openBtn.focus();
+  }
+
+  function nextRound(message) {
+    currentRound = makeMathRound();
+    answerInput.value = '';
+    feedback.textContent = message;
+    renderRound();
+  }
+
+  function submitAnswer() {
+    const raw = answerInput.value.trim();
+    if (raw === '') {
+      feedback.textContent = 'Type an answer first.';
+      answerInput.focus();
+      return;
+    }
+
+    const numeric = Number(raw);
+    if (!Number.isFinite(numeric)) {
+      feedback.textContent = 'Use numbers only.';
+      answerInput.select();
+      return;
+    }
+
+    if (numeric === currentRound.answer) {
+      score += 1;
+      streak += 1;
+      nextRound(`Correct! Nice streak: ${streak}.`);
+      return;
+    }
+
+    streak = 0;
+    const expected = currentRound.answer;
+    nextRound(`Not quite. The answer was ${expected}.`);
+  }
+
+  openBtn.addEventListener('click', openGame);
+  closeBtn.addEventListener('click', closeGame);
+  submitBtn.addEventListener('click', submitAnswer);
+  nextBtn.addEventListener('click', () => {
+    streak = 0;
+    nextRound('Skipped. Try this one.');
+  });
+  answerInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      submitAnswer();
+    }
+  });
+
+  renderRound();
+}
+
 function setupApp(doc = document) {
+  setupMiniGame(doc);
   const history = new WordHistory();
   const button = doc.getElementById('generateBtn');
   const status = doc.getElementById('status');
   const word = doc.getElementById('word');
   const definition = doc.getElementById('definition');
   const songList = doc.getElementById('songList');
-  const loadingUi = createLoadingStateHandlers(doc);
 
   async function run() {
     button.disabled = true;
     status.textContent = 'Generating word and finding songs...';
-    loadingUi.start();
     // Keep regenerating silently until we have a usable result.
     while (true) {
       try {
@@ -591,7 +629,6 @@ function setupApp(doc = document) {
         await wait(180);
       }
     }
-    loadingUi.stop();
     button.disabled = false;
   }
 
