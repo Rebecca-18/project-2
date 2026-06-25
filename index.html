@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Word Song Finder</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="bg-marble-gray">
+    <main class="container">
+      <h1>Word Song Finder</h1>
+      <p class="subtitle">Generate a random word and find up to 300 matching song titles.</p>
+
+      <button id="generateBtn" type="button">Generate New Word</button>
+      <button id="toggleGameBtn" type="button" class="toggle-game">Open Tap Game</button>
+      <p id="status" role="status" aria-live="polite"></p>
+
+      <section>
+        <h2>Generated word: <span id="word">—</span></h2>
+        <p class="definition-line"><strong>Definition:</strong> <span id="definition">—</span></p>
+      </section>
+
+      <section id="loadingPanel" class="loading-panel" hidden>
+        <div class="pulse-orb" aria-hidden="true"></div>
+        <p id="loadingHint" class="loading-hint">Tap game ready.</p>
+        <div class="mini-game" aria-live="polite">
+          <p class="mini-title">Tap the beat anytime</p>
+          <button id="tapTarget" type="button" class="tap-target">Tap</button>
+          <p class="tap-score">Score: <span id="tapScore">0</span></p>
+          <button id="resetTapScore" type="button" class="reset-score">Reset score</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Songs by descending popularity</h2>
+        <ol id="songList"></ol>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
